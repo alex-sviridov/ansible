@@ -114,6 +114,19 @@ options:
     - If this is not provided, ansible will use the local calculated checksum of the src file.
     type: str
     version_added: '2.5'
+  excludes:
+    description:
+    - One or more (shell or regex) patterns, which type is controlled by I(excludes_regex) option.
+    - Items whose file or directory names match an I(excludes) pattern are ignored. Multiple patterns can be specified using a list.
+    type: list
+    aliases: [ exclude ]
+    elements: str  
+  excludes_regex:
+    description:
+    - If C(false), the exclude patterns are file globs (shell).
+    - If C(true), they are python regexes.
+    type: bool
+    default: no
 extends_documentation_fragment:
     - decrypt
     - files
@@ -536,6 +549,8 @@ def main():
             backup=dict(type='bool', default=False),
             force=dict(type='bool', default=True),
             validate=dict(type='str'),
+            excludes=dict(type='list', aliases=['exclude'], elements='str', default=[]),
+            excludes_regex=dict(type='bool', default=False),
             directory_mode=dict(type='raw'),
             remote_src=dict(type='bool'),
             local_follow=dict(type='bool'),
