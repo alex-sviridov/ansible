@@ -26,6 +26,8 @@ import os.path
 import stat
 import tempfile
 import traceback
+import re
+from fnmatch import fnmatch
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleFileNotFound
@@ -199,6 +201,26 @@ def _walk_dirs(topdir, base_path=None, local_follow=False, trailing_slash_detect
     _recurse(topdir, offset, parents)
 
     return r_files
+
+  
+def _check_if_excluded(basename, excludes, excludes_regex):
+    """
+    Function to check if file or directory name match any exclude patterns or do not match any include patterns
+    https://github.com/ansible/ansible/issues/80208
+    """
+    if not basename:
+        return False
+    filename_chunks = os.path.normpath(basename).split(os.sep)
+    for exclusion_pattern in excludes:
+        for chunk in filename_chunks:
+            match = False
+            if excludes_regex:
+                match = re.compile(exclusion_pattern).match(chunk)
+            else:
+                match = fnmatch(chunk, exclusion_pattern)
+            if match:
+                return 'file {} excluded by pattern "{}"'.format(basename, exclusion_pattern)
+    return False
 
 
 class ActionModule(ActionBase):
@@ -416,6 +438,8 @@ class ActionModule(ActionBase):
         dest = self._task.args.get('dest', None)
         remote_src = boolean(self._task.args.get('remote_src', False), strict=False)
         local_follow = boolean(self._task.args.get('local_follow', True), strict=False)
+        excludes = self._task.args.get('excludes', None)
+        excludes_regex = self._task.args.get('excludes_regex', None)
 
         result['failed'] = True
         if not source and content is None:
@@ -509,6 +533,12 @@ class ActionModule(ActionBase):
         for source_full, source_rel in source_files['files']:
             # copy files over.  This happens first as directories that have
             # a file do not need to be created later
+            
+            # Check if file is excluded or in excluded dir
+            if excludes:
+                exclude = _check_if_excluded(basename=source_rel, excludes=excludes, excludes_regex=excludes_regex)
+                if exclude:
+                    continue
 
             # We only follow symlinks for files in the non-recursive case
             if source_files['directories']:
@@ -539,6 +569,12 @@ class ActionModule(ActionBase):
             # created yet.
             if dest_path in implicit_directories:
                 continue
+                
+            # Check if dir is excluded
+            if excludes:
+                exclude = _check_if_excluded(basename=source_rel, excludes=excludes, excludes_regex=excludes_regex)
+                if exclude:
+                    continue
 
             # Use file module to create these
             new_module_args = _create_remote_file_args(self._task.args)
